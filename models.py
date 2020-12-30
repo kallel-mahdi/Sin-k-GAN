@@ -2,6 +2,8 @@ import torch
 
 MIN_CHANNELS = 32
 
+
+## General convBlock
 class ConvBlock(torch.nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int) -> None:
@@ -15,6 +17,22 @@ class ConvBlock(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
+
+### ConvBlock for discriminator, we use a bigger kernel side to watch for larger details
+class ConvBlockD(torch.nn.Module):
+
+    def __init__(self, in_channels: int, out_channels: int) -> None:
+        super(ConvBlockD, self).__init__()
+
+        self.layers = torch.nn.Sequential(
+            torch.nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=5, stride=3, padding=1),
+            torch.nn.BatchNorm2d(num_features=out_channels),
+            torch.nn.LeakyReLU(negative_slope=0.2, inplace=True)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.layers(x)
+      
 
 
 class SingleScaleGenerator(torch.nn.Module):
@@ -53,7 +71,7 @@ class Discriminator(torch.nn.Module):
         for i in range(n_blocks-2):
             in_channels = max([min_channels, n_channels // (2 ** (i))])
             out_channels = max([min_channels, n_channels // (2 ** (i+1))])
-            self.body.append(ConvBlock(in_channels=in_channels, out_channels=out_channels))
+            self.body.append(ConvBlockD(in_channels=in_channels, out_channels=out_channels))
         self.body = torch.nn.Sequential(*self.body)
 
         self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=1, kernel_size=3, stride=1, padding=1)

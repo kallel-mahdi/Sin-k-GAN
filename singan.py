@@ -193,7 +193,9 @@ class SinGAN:
             }
 
             self.logger.log_losses(loss_dict)
-            print(f'[{self.N - len(self.g_pyramid) + 1}: {step}|{steps}] -', loss_dict)
+            
+            if step % 100 == 0:
+	            print(f'[{self.N - len(self.g_pyramid) + 1}: {step}|{steps}] -', loss_dict)
 
             # increment counter for task progress tracking
             self.done_steps += 1
