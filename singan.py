@@ -55,7 +55,8 @@ class SinGAN:
         # for celery task tracking
         self.done_steps = 0
         self.total_steps = None
-
+        self.d_steps = 3
+        #self.g_steps = 2
     def fit(self, img: np.ndarray, steps_per_scale: int = 2000) -> None:
         # initialize task tracking parameters
         self.total_steps = (self.N + 1) * steps_per_scale
@@ -142,51 +143,51 @@ class SinGAN:
         mone = one * -1
         ## Sinkhorn hypers
         epsilon = 0.1
-        niter_sink = 10
+        niter_sink = 20
         
         for step in range(1, steps + 1):
+            
             self.logger.new_step()
 
             # ====== train discriminator =======================================
-                
-            for p in self.d_pyramid[0].parameters():
-                
+            
+            for p in self.d_pyramid[0].parameters(): 
                 p.requires_grad = True
+                
+            for i in range(self.d_steps):
             
-            self.d_pyramid[0].zero_grad()
+                self.d_pyramid[0].zero_grad()
 
-            # generate a fake image
-            fake = self.forward_g_pyramid(target_size=target_size)
-            # we treat each patch of the image as as a full image.
-            # the discriminator outputs embeddings for each patch of size (n_patch,n_embed)
-            #print("fake image shape",fake.size())
-            d_fake = self.d_pyramid[0](fake.detach())
+                # generate a fake image
+                fake = self.forward_g_pyramid(target_size=target_size)
+                # we treat each patch of the image as as a full image.
+                # the discriminator outputs embeddings for each patch of size (n_patch,n_embed)
+                #print("fake image shape",fake.size())
+                d_fake = self.d_pyramid[0](fake.detach())
 
-            # let the discriminator judge the real image patches
-            d_real = self.d_pyramid[0](real)
+                # let the discriminator judge the real image patches
+                d_real = self.d_pyramid[0](real)
 
-            # compute sinkhorn loss of discriminator :
+                # compute sinkhorn loss of discriminator :
+                
+                batch_size = d_fake.size(0)
             
-            batch_size = d_fake.size(0)
-        
-            sink_D = 2*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
-                    - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
-                    - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
-            
-            sink_D.backward(mone,retain_graph=True)
+                sink_D = 2*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
+                        - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
+                        - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
+                
+                sink_D.backward(mone,retain_graph=True)
 
-            
-            
-            # gradient penalty loss
-            # grad_penalty = gradient_penalty(self.d_pyramid[0], real, fake, self.device) * self.hypers[
-            #     'grad_penalty_weight']
-            # grad_penalty.backward()
-
-            # make a step against the gradient
-            self.d_optimizer.step()
-            """ Instead of gradient penalty we can clamp the weights of the discriminator"""
-            for p in self.d_pyramid[0].parameters():
-                p.data.clamp_(-0.01, 0.01)
+                # make a step against the gradient
+                self.d_optimizer.step()
+                """ Instead of gradient penalty we can clamp the weights of the discriminator"""
+                for p in self.d_pyramid[0].parameters():
+                    p.data.clamp_(-0.01, 0.01)
+                
+                # gradient penalty loss
+                # grad_penalty = gradient_penalty(self.d_pyramid[0], real, fake, self.device) * self.hypers[
+                #     'grad_penalty_weight']
+                # grad_penalty.backward()
 
             # ====== train generator ===========================================
                 
@@ -195,11 +196,11 @@ class SinGAN:
             for p in self.d_pyramid[0].parameters():
                 p.requires_grad = False
             
-            self.g_pyramid[0].zero_grad()
-
+    
 
             # let the discriminator judge the fake image patches
             # this time we let gradient flow through generator (no detach)
+            #fake = self.forward_g_pyramid(target_size=target_size)
             d_fake = self.d_pyramid[0](fake)
             d_real = self.d_pyramid[0](real)
 
