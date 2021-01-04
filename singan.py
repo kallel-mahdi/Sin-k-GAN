@@ -6,6 +6,7 @@ import numpy as np
 from imageio import imwrite
 
 from models import SingleScaleGenerator, Discriminator
+from models import weights_init
 from utils import freeze, gradient_penalty
 
 from celery import current_task
@@ -92,11 +93,14 @@ class SinGAN:
             new_generator = SingleScaleGenerator(n_channels=n_channels,
                                                 min_channels=self.hypers['min_n_channels'],
                                                 n_blocks=self.hypers['n_blocks']).to(self.device)
+            
+            new_generator.apply(weights_init)
 
             new_discriminator = Discriminator(n_channels=n_channels,
                                             min_channels=self.hypers['min_n_channels'],
                                             n_blocks=self.hypers['n_blocks'],head_stride=(p+2)//2).to(self.device)
 
+            new_discriminator.apply(weights_init)
             # initialize weights via copy if possible
             if (p - 1) // 4 == p // 4:
                 new_generator.load_state_dict(self.g_pyramid[0].state_dict())
