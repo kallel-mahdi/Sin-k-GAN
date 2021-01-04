@@ -58,7 +58,7 @@ class SinGAN:
         self.done_steps = 0
         self.total_steps = None
         self.d_steps = 3
-        self.g_steps = 1
+        self.g_steps = 3
     def fit(self, img: np.ndarray, steps_per_scale: int = 2000) -> None:
         # initialize task tracking parameters
         self.total_steps = (self.N + 1) * steps_per_scale
@@ -99,6 +99,7 @@ class SinGAN:
 
             stride = (p+2)//2
             ker_s = 2*stride + 1
+            print("For scale ",p,"kernel size is",ker_s,"stride is",stride)
             new_discriminator = Discriminator(n_channels=n_channels,
                                             min_channels=self.hypers['min_n_channels'],
                                             n_blocks=self.hypers['n_blocks'],tail_ker_s=ker_s,tail_stride=stride).to(self.device)
@@ -163,8 +164,8 @@ class SinGAN:
         one = torch.tensor(1, dtype=torch.float).to(self.device)
         mone = one * -1
         ## Sinkhorn hypers
-        epsilon = 1
-        niter_sink = 20
+        epsilon = 0.01
+        niter_sink = 25
         
         for step in range(1, steps + 1):
             
