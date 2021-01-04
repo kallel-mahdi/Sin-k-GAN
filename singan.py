@@ -106,7 +106,9 @@ class SinGAN:
             
             
             # we double the number of channels after 4 scales
-            if (p-1 // 4) == p //4 :
+            if (p - 1) // 4 == p // 4  :
+                
+                print("P==",p,"loading weights from previous state")              
                 new_generator.load_state_dict(self.g_pyramid[0].state_dict())
                 new_discriminator.load_state_dict(self.d_pyramid[0].state_dict())
             # initialize weights via copy if possible
@@ -161,7 +163,7 @@ class SinGAN:
         one = torch.tensor(1, dtype=torch.float).to(self.device)
         mone = one * -1
         ## Sinkhorn hypers
-        epsilon = 0.1
+        epsilon = 1
         niter_sink = 20
         
         for step in range(1, steps + 1):
