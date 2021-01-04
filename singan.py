@@ -94,7 +94,7 @@ class SinGAN:
 
             new_discriminator = Discriminator(n_channels=n_channels,
                                             min_channels=self.hypers['min_n_channels'],
-                                            n_blocks=self.hypers['n_blocks']).to(self.device)
+                                            n_blocks=self.hypers['n_blocks'],head_stride=(p+2)//2).to(self.device)
 
             # initialize weights via copy if possible
             if (p - 1) // 4 == p // 4:
@@ -175,13 +175,18 @@ class SinGAN:
             
             sink_D.backward(mone,retain_graph=True)
 
+            
+            
             # gradient penalty loss
-            grad_penalty = gradient_penalty(self.d_pyramid[0], real, fake, self.device) * self.hypers[
-                'grad_penalty_weight']
-            grad_penalty.backward()
+            # grad_penalty = gradient_penalty(self.d_pyramid[0], real, fake, self.device) * self.hypers[
+            #     'grad_penalty_weight']
+            # grad_penalty.backward()
 
             # make a step against the gradient
             self.d_optimizer.step()
+            """ Instead of gradient penalty we can clamp the weights of the discriminator"""
+            for p in self.d_pyramid[0].parameters():
+                p.data.clamp_(-0.01, 0.01)
 
             # ====== train generator ===========================================
                 
