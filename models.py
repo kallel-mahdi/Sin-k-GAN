@@ -25,7 +25,7 @@ class ConvBlockD(torch.nn.Module):
         super(ConvBlockD, self).__init__()
 
         self.layers = torch.nn.Sequential(
-            torch.nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=5, stride=3, padding=1),
+            torch.nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
             torch.nn.BatchNorm2d(num_features=out_channels),
             torch.nn.LeakyReLU(negative_slope=0.2, inplace=True)
         )
@@ -65,7 +65,7 @@ class Discriminator(torch.nn.Module):
     def __init__(self, n_channels: int = 32, min_channels: int = MIN_CHANNELS, n_blocks=5) -> None:
         super(Discriminator, self).__init__()
 
-        self.head = ConvBlock(in_channels=3, out_channels=n_channels,k_s=10,stride=5)
+        self.head = ConvBlock(in_channels=3, out_channels=n_channels,k_s=3,stride=1)
 
         self.body = torch.nn.ModuleList()
         for i in range(n_blocks-2):
