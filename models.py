@@ -62,10 +62,10 @@ class SingleScaleGenerator(torch.nn.Module):
 
 class Discriminator(torch.nn.Module):
 
-    def __init__(self, n_channels: int = 32, min_channels: int = MIN_CHANNELS, n_blocks=5,head_stride=1) -> None:
+    def __init__(self, n_channels: int = 32, min_channels: int = MIN_CHANNELS, n_blocks=5,tail_ker_s=5,tail_stride=1) -> None:
         super(Discriminator, self).__init__()
 
-        self.head = ConvBlock(in_channels=3, out_channels=n_channels,k_s=11,stride=head_stride,padding=5)
+        self.head = ConvBlock(in_channels=3, out_channels=n_channels,k_s=3,stride=1,padding=5)
 
         self.body = torch.nn.ModuleList()
         for i in range(n_blocks-2):
@@ -74,13 +74,12 @@ class Discriminator(torch.nn.Module):
             self.body.append(ConvBlockD(in_channels=in_channels, out_channels=out_channels))
         self.body = torch.nn.Sequential(*self.body)
 
-        self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=1, kernel_size=3, stride=1, padding=1)
+        self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=64, kernel_size=tail_ker_s, stride=tail_stride, padding=1)
 
 
     def forward(self, x) -> None:
         #return self.tail(self.body(self.head(x)))
-        x = self.body(self.head(x))
-        
+        x = self.tail(self.body(self.head(x)))
         return x.reshape((x.shape[1],-1)).T
 
 def weights_init(m):

@@ -15,7 +15,7 @@ from sinkhorn import sinkhorn_loss_primal
 
 class SinGAN:
 
-    def __init__(self, N, logger, r=4 / 3, device=torch.device('cpu'), hypers: Dict[str, Any] = {}) -> None:
+    def __init__(self, N, logger, r=4 / 3, device=torch.device('cpu'), hypers: Dict[str, Any] = {},grad_penalty:bool = False) -> None:
         # target depth of the SinGAN is (N+1)
         self.N = N
         # scaling factor, > 1
@@ -44,6 +44,7 @@ class SinGAN:
         }
         # overwrite them with given hyperparameters
         self.hypers.update(hypers)
+        self.grad_penalty = grad_penalty
 
         # define input and output (de-)normalization transformations
         self.transform_input = lambda x: (x - 127.5) / 127.5
@@ -57,7 +58,7 @@ class SinGAN:
         self.done_steps = 0
         self.total_steps = None
         self.d_steps = 3
-        #self.g_steps = 2
+        self.g_steps = 1
     def fit(self, img: np.ndarray, steps_per_scale: int = 2000) -> None:
         # initialize task tracking parameters
         self.total_steps = (self.N + 1) * steps_per_scale
@@ -96,9 +97,11 @@ class SinGAN:
             
             new_generator.apply(weights_init)
 
+            stride = (p+2)//2
+            ker_s = 2*stride + 1
             new_discriminator = Discriminator(n_channels=n_channels,
                                             min_channels=self.hypers['min_n_channels'],
-                                            n_blocks=self.hypers['n_blocks'],head_stride=(p+2)//2).to(self.device)
+                                            n_blocks=self.hypers['n_blocks'],tail_ker_s=ker_s,tail_stride=stride).to(self.device)
 
             new_discriminator.apply(weights_init)
             # initialize weights via copy if possible
@@ -185,14 +188,20 @@ class SinGAN:
                 # make a step against the gradient
                 self.d_optimizer.step()
                 """ Instead of gradient penalty we can clamp the weights of the discriminator"""
-                for p in self.d_pyramid[0].parameters():
-                    p.data.clamp_(-0.01, 0.01)
                 
+                
+                
+                if self.grad_penalty:
                 # gradient penalty loss
-                # grad_penalty = gradient_penalty(self.d_pyramid[0], real, fake, self.device) * self.hypers[
-                #     'grad_penalty_weight']
-                # grad_penalty.backward()
+                    grad_penalty = gradient_penalty(self.d_pyramid[0], real, fake, self.device) * self.hypers['grad_penalty_weight']
+                    grad_penalty.backward()
 
+                else :
+                # clamp discriminator weights                
+                    for p in self.d_pyramid[0].parameters():
+                        p.data.clamp_(-0.01, 0.01)
+                
+              
             # ====== train generator ===========================================
                 
             # no gradient must flow through discriminator
@@ -201,34 +210,38 @@ class SinGAN:
                 p.requires_grad = False
             
     
+            for i in range(self.g_steps):
+                
+                # let the discriminator judge the fake image patches
+                # this time we let gradient flow through generator (no detach)
+                
+                ## Use the previously generated image
+                if i!=0: fake = self.forward_g_pyramid(target_size=target_size)
+                    
+                d_fake = self.d_pyramid[0](fake)
+                d_real = self.d_pyramid[0](real)
 
-            # let the discriminator judge the fake image patches
-            # this time we let gradient flow through generator (no detach)
-            #fake = self.forward_g_pyramid(target_size=target_size)
-            d_fake = self.d_pyramid[0](fake)
-            d_real = self.d_pyramid[0](real)
-
-            # compute sinkhorn loss of generator
+                # compute sinkhorn loss of generator
+                
+                
+                batch_size = d_fake.size(0)
             
-            
-            batch_size = d_fake.size(0)
-        
-            sink_G = 2*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
-                    - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
-                    - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
-            
-            ### invert sign of loss
-            sink_G.backward(one,retain_graph=True) 
+                sink_G = 2*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
+                        - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
+                        - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
+                
+                ### invert sign of loss
+                sink_G.backward(one,retain_graph=True) 
 
-            # reconstruct original image with fixed z_init and else no noise
-            rec = self.forward_g_pyramid(target_size=target_size, Z=[self.z_init] + [0] * (len(self.g_pyramid) - 1))
+                # reconstruct original image with fixed z_init and else no noise
+                rec = self.forward_g_pyramid(target_size=target_size, Z=[self.z_init] + [0] * (len(self.g_pyramid) - 1))
 
-            # reconstruction loss
-            rec_g_loss = torch.nn.functional.mse_loss(rec, real) * self.hypers['rec_loss_weight']
-            rec_g_loss.backward()
+                # reconstruction loss
+                rec_g_loss = torch.nn.functional.mse_loss(rec, real) * self.hypers['rec_loss_weight']
+                rec_g_loss.backward()
 
-            # make a step against the gradient
-            self.g_optimizer.step()
+                # make a step against the gradient
+                self.g_optimizer.step()
 
             embed_size =  d_fake.size(1)
             loss_dict = {
