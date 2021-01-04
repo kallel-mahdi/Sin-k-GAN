@@ -78,4 +78,7 @@ class Discriminator(torch.nn.Module):
 
 
     def forward(self, x) -> None:
-        return self.tail(self.body(self.head(x)))
+        #return self.tail(self.body(self.head(x)))
+        x = self.body(self.head(x))
+        
+        return x.reshape((x.shape[1],-1)).T

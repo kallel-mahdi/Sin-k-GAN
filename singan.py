@@ -9,6 +9,7 @@ from models import SingleScaleGenerator, Discriminator
 from utils import freeze, gradient_penalty
 
 from celery import current_task
+from sinkhorn import sinkhorn_loss_primal
 
 
 class SinGAN:
@@ -135,27 +136,43 @@ class SinGAN:
         print(self.rmses)
 
         self.logger.set_mode('training')
+
+        ## Variables for backpropagation, so we dont invert signs.
+        one = torch.tensor(1, dtype=torch.float).to(opt.device)
+        mone = one * -1
+        ## Sinkhorn hypers
+        epsilon = 1
+        niter_sink = 1
+        
         for step in range(1, steps + 1):
             self.logger.new_step()
 
             # ====== train discriminator =======================================
+                
+            for p in self.d_pyramid[0].parameters():
+                
+                p.requires_grad = True
+            
             self.d_pyramid[0].zero_grad()
 
             # generate a fake image
             fake = self.forward_g_pyramid(target_size=target_size)
-            # let the discriminator judge the fake image patches (without any gradient flow through the generator )
+            # we treat each patch of the image as as a full image.
+            # the discriminator outputs embeddings for each patch of size (n_patch,n_embed)
             d_fake = self.d_pyramid[0](fake.detach())
-
-            # loss for fake images
-            adv_d_fake_loss = torch.mean(d_fake)
-            adv_d_fake_loss.backward()
 
             # let the discriminator judge the real image patches
             d_real = self.d_pyramid[0](real)
 
-            # loss for real images
-            adv_d_real_loss = (-1) * torch.mean(d_real)
-            adv_d_real_loss.backward()
+            # compute sinkhorn loss of discriminator :
+            
+            batch_size = d_fake.size(0)
+        
+            sink_D = 2*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
+                    - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
+                    - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
+              
+            sink_D.backward(mone,retain_graph=True)
 
             # gradient penalty loss
             grad_penalty = gradient_penalty(self.d_pyramid[0], real, fake, self.device) * self.hypers[
@@ -166,14 +183,30 @@ class SinGAN:
             self.d_optimizer.step()
 
             # ====== train generator ===========================================
+                 
+            # no gradient must flow through discriminator
+            
+            for p in self.d_pyramid[0].parameters():
+                p.requires_grad = False
+            
             self.g_pyramid[0].zero_grad()
 
+
             # let the discriminator judge the fake image patches
+            # this time we let gradient flow through generator (no detach)
             d_fake = self.d_pyramid[0](fake)
 
-            # loss for fake images
-            adv_g_loss = (-1) * torch.mean(d_fake)
-            adv_g_loss.backward()
+            # compute sinkhorn loss of generator
+            
+            
+            batch_size = d_fake.size(0)
+        
+            sink_G = 2*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
+                    - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
+                    - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
+              
+            ### invert sign of loss
+            sink_G.backward(one,retain_graph=True) 
 
             # reconstruct original image with fixed z_init and else no noise
             rec = self.forward_g_pyramid(target_size=target_size, Z=[self.z_init] + [0] * (len(self.g_pyramid) - 1))
