@@ -95,7 +95,7 @@ class SinGAN:
                                                 min_channels=self.hypers['min_n_channels'],
                                                 n_blocks=self.hypers['n_blocks']).to(self.device)
             
-            new_generator.apply(weights_init)
+            
 
             stride = (p+2)//2
             ker_s = 2*stride + 1
@@ -103,12 +103,19 @@ class SinGAN:
                                             min_channels=self.hypers['min_n_channels'],
                                             n_blocks=self.hypers['n_blocks'],tail_ker_s=ker_s,tail_stride=stride).to(self.device)
 
-            new_discriminator.apply(weights_init)
-            # initialize weights via copy if possible
-            if (p - 1) // 4 == p // 4:
+            
+            
+            # we double the number of channels after 4 scales
+            if (p-1 // 4) == p //4 :
                 new_generator.load_state_dict(self.g_pyramid[0].state_dict())
                 new_discriminator.load_state_dict(self.d_pyramid[0].state_dict())
+            # initialize weights via copy if possible
+            else :
+                new_generator.apply(weights_init)
+                new_discriminator.apply(weights_init)
+               
 
+            
             # reset the optimizers
             self.g_optimizer = torch.optim.Adam(new_generator.parameters(), lr=self.hypers['g_lr'], betas=[0.5, 0.999])
             self.d_optimizer = torch.optim.Adam(new_discriminator.parameters(), lr=self.hypers['d_lr'],
@@ -118,6 +125,11 @@ class SinGAN:
             self.g_pyramid.insert(0, new_generator)
             self.d_pyramid.insert(0, new_discriminator)
 
+            # get the last trained scale out of gpu memory
+            # if p > 1:
+            #     self.g_pyramid[1].cpu()
+            #     self.d_pyramid[1].cpu()
+                
             # fit the currently finest scale
             self.fit_single_scale(img=img, target_size=scale_sizes[p], steps=steps_per_scale)
 
@@ -247,8 +259,8 @@ class SinGAN:
             loss_dict = {
                 'batch_size':batch_size,
                 'embed_size':embed_size,
-                'sink_distance':sink_G,
-                'rec_g_loss': rec_g_loss,
+                'sink_distance':float(sink_G),
+                'rec_g_loss': float(rec_g_loss),
             }
 
             self.logger.log_losses(loss_dict)

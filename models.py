@@ -74,7 +74,7 @@ class Discriminator(torch.nn.Module):
             self.body.append(ConvBlockD(in_channels=in_channels, out_channels=out_channels))
         self.body = torch.nn.Sequential(*self.body)
 
-        self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=64, kernel_size=tail_ker_s, stride=tail_stride, padding=1)
+        self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=32, kernel_size=9, stride=tail_stride, padding=1)
 
 
     def forward(self, x) -> None:
