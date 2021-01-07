@@ -62,8 +62,8 @@ class SinGAN:
         self.sinkhorn = sink
         self.grad_penalty = grad_penalty
         print("Grad penalty=",self.grad_penalty,"Sinkhorn =",self.sinkhorn)
-        self.d_steps = 2
-        self.g_steps = 2
+        self.d_steps = 1
+        self.g_steps = 1
         
     def fit(self, img: np.ndarray, steps_per_scale: int = 2000) -> None:
         # initialize task tracking parameters
@@ -160,16 +160,35 @@ class SinGAN:
                 d_fake = self.d_pyramid[0](fake.detach())
 
                 # loss for fake images
-                adv_d_fake_loss = torch.mean(d_fake)
-                adv_d_fake_loss.backward()
+                #adv_d_fake_loss = torch.mean(d_fake)
+                #adv_d_fake_loss.backward()
 
                 # let the discriminator judge the real image patches
                 d_real = self.d_pyramid[0](real)
 
                 # loss for real images
-                adv_d_real_loss = (-1) * torch.mean(d_real)
-                adv_d_real_loss.backward()
+                #adv_d_real_loss = (-1) * torch.mean(d_real)
+                #adv_d_real_loss.backward()
+                
+                if self.sinkhorn :
+                    
+                    # compute regularized Wasserstein loss (sinkhorn) loss of discriminator :
+                    batch_size = d_fake.size(0)
+                    d_loss = (-2)*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
+                            - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
+                            - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
+                    
+                    d_loss.backward(retain_graph=True)
+                
+                else : 
+                    # compute normal Wasserstein loss for discriminator
+                    adv_d_fake_loss = torch.mean(d_fake)
+                    adv_d_real_loss = (-1) * torch.mean(d_real)
+                    d_loss = adv_d_fake_loss + adv_d_real_loss 
+                    d_loss.backward(retain_graph=True)
 
+                d_loss = adv_d_fake_loss + adv_d_real_loss
+                d_loss.backward()
                 if self.grad_penalty:
                     
                     # gradient penalty loss
@@ -180,7 +199,7 @@ class SinGAN:
                 # make a step against the gradient
                 self.d_optimizer.step()
                 
-                 if not self.grad_penalty :
+                if not self.grad_penalty :
                     # clamp discriminator weights                
                     ## this takes place after backward pass
                     ## replace the gradient penalty
@@ -212,12 +231,21 @@ class SinGAN:
                 # make a step against the gradient
                 self.g_optimizer.step()
 
-            loss_dict = {
-                'adv_d_fake_loss': adv_d_fake_loss,
-                'adv_d_real_loss': adv_d_real_loss,
-                'adv_g_loss': adv_g_loss,
-                'rec_g_loss': rec_g_loss,
-            }
+            if self.sinkhorn :
+                    loss_dict = {
+                     'batch_size':batch_size,
+                    'embed_size':embed_size,
+                    'sink_distance':float(sink_G),
+                    'rec_g_loss': float(rec_g_loss),
+                }
+            
+            else :
+                loss_dict = {
+                    'adv_d_fake_loss': adv_d_fake_loss,
+                    'adv_d_real_loss': adv_d_real_loss,
+                    'adv_g_loss': adv_g_loss,
+                    'rec_g_loss': rec_g_loss,
+                }
 
             self.logger.log_losses(loss_dict)
             if step % 100 == 0:
