@@ -1,5 +1,3 @@
-
- 
 from typing import Dict, Any, List, Tuple
 import torch
 import os
@@ -7,17 +5,18 @@ import numpy as np
 
 from imageio import imwrite
 
-from models import SingleScaleGenerator, Discriminator
+from models import SingleScaleGenerator, Discriminator,Discriminator_sk
+from models import weights_init
 from utils import freeze, gradient_penalty
 
 from celery import current_task
+from sinkhorn import sinkhorn_loss_primal
 
 
 class SinGAN:
 
     def __init__(self, N, logger, r=4 / 3, device=torch.device('cpu'), sink=False,grad_penalty=True,
                  hypers: Dict[str, Any] = {}) -> None:
-        
         # target depth of the SinGAN is (N+1)
         self.N = N
         # scaling factor, > 1
@@ -58,12 +57,12 @@ class SinGAN:
         # for celery task tracking
         self.done_steps = 0
         self.total_steps = None
-        # training parameters :
+        # training parameters
+        self.d_steps = 3
+        self.g_steps = 3
         self.sinkhorn = sink
         self.grad_penalty = grad_penalty
-        print("Grad penalty=",self.grad_penalty,"Sinkhorn =",self.sinkhorn)
-        self.d_steps = 1
-        self.g_steps = 1
+        
         
     def fit(self, img: np.ndarray, steps_per_scale: int = 2000) -> None:
         # initialize task tracking parameters
@@ -98,18 +97,48 @@ class SinGAN:
 
             # instantiate new models for the next scale
             new_generator = SingleScaleGenerator(n_channels=n_channels,
-                                                 min_channels=self.hypers['min_n_channels'],
-                                                 n_blocks=self.hypers['n_blocks']).to(self.device)
+                                                min_channels=self.hypers['min_n_channels'],
+                                                n_blocks=self.hypers['n_blocks']).to(self.device)
+            
+            
+            if self.sinkhorn:
+                stride = (p+2)//2
+                ker_s = 2*stride + 1
+                print("For scale ",p,"kernel size is",ker_s,"stride is",stride)
+            
+            else :
+                stride = 1
+                ker_s = 3
+            if self.sinkhorn :
+                
+                ## when training with sinkhorn we have 32 output channels.
+                ## we need an embedding for each patch of the image.
+                new_discriminator = Discriminator_sk(n_channels=n_channels,
+                                                min_channels=self.hypers['min_n_channels'],
+                                                n_blocks=self.hypers['n_blocks'],tail_ker_s=ker_s,tail_stride=stride).to(self.device)
+            
+            else : 
+                ## we trianing with Wasserstein loss we need 1 output channel.
+                # For each patch we output a single value.
+                new_discriminator = Discriminator(n_channels=n_channels,
+                                            min_channels=self.hypers['min_n_channels'],
+                                            n_blocks=self.hypers['n_blocks']).to(self.device)
 
-            new_discriminator = Discriminator(n_channels=n_channels,
-                                              min_channels=self.hypers['min_n_channels'],
-                                              n_blocks=self.hypers['n_blocks']).to(self.device)
-
-            # initialize weights via copy if possible
-            if (p - 1) // 4 == p // 4:
+            
+            
+            # we double the number of channels after 4 scales
+            if (p - 1) // 4 == p // 4  :
+                
+                print("P==",p,"loading weights from previous state")              
                 new_generator.load_state_dict(self.g_pyramid[0].state_dict())
                 new_discriminator.load_state_dict(self.d_pyramid[0].state_dict())
+            # initialize weights via copy if possible
+            else :
+                new_generator.apply(weights_init)
+                new_discriminator.apply(weights_init)
+               
 
+            
             # reset the optimizers
             self.g_optimizer = torch.optim.Adam(new_generator.parameters(), lr=self.hypers['g_lr'], betas=[0.5, 0.999])
             self.d_optimizer = torch.optim.Adam(new_discriminator.parameters(), lr=self.hypers['d_lr'],
@@ -119,6 +148,11 @@ class SinGAN:
             self.g_pyramid.insert(0, new_generator)
             self.d_pyramid.insert(0, new_discriminator)
 
+            # get the last trained scale out of gpu memory
+            # if p > 1:
+            #     self.g_pyramid[1].cpu()
+            #     self.d_pyramid[1].cpu()
+                
             # fit the currently finest scale
             self.fit_single_scale(img=img, target_size=scale_sizes[p], steps=steps_per_scale)
 
@@ -138,59 +172,122 @@ class SinGAN:
         if self.last_rec is not None:
             # compute root mean squared error between upsampled version of rec from last scale and the real target of the current scale
             rmse = torch.sqrt(torch.nn.functional.mse_loss(real,
-                                                           torch.nn.functional.interpolate(self.last_rec, target_size,
-                                                                                           mode='bilinear',
-                                                                                           align_corners=True)))
+                                                        torch.nn.functional.interpolate(self.last_rec, target_size,
+                                                                                        mode='bilinear',
+                                                                                        align_corners=True)))
             self.rmses.insert(0, rmse.detach().cpu().numpy().item())
         print(self.rmses)
 
         self.logger.set_mode('training')
+
+        ## Variables for backpropagation, so we dont invert signs.
+        # one = torch.tensor(1, dtype=torch.float).to(self.device)
+        # mone = one * -1
+        ## Sinkhorn hypers
+        epsilon = 0.01
+        niter_sink = 25
+        
         for step in range(1, steps + 1):
+            
             self.logger.new_step()
 
             # ====== train discriminator =======================================
-            for i in range(self.d_steps):
+            
+            for p in self.d_pyramid[0].parameters(): 
+                p.requires_grad = True
                 
+            for i in range(self.d_steps):
+            
                 self.d_pyramid[0].zero_grad()
 
                 # generate a fake image
                 fake = self.forward_g_pyramid(target_size=target_size)
-                # let the discriminator judge the fake image patches (without any gradient flow through the generator )
+                # we treat each patch of the image as as a full image.
+                # the discriminator outputs embeddings for each patch of size (n_patch,n_embed)
+                #print("fake image shape",fake.size())
                 d_fake = self.d_pyramid[0](fake.detach())
-
-                # loss for fake images
-                adv_d_fake_loss = torch.mean(d_fake)
-                adv_d_fake_loss.backward()
 
                 # let the discriminator judge the real image patches
                 d_real = self.d_pyramid[0](real)
 
-                # loss for real images
-                adv_d_real_loss = (-1) * torch.mean(d_real)
-                adv_d_real_loss.backward()
-
-                if self.grad_penalty:
+                
+                
+                
+                
+                if self.sinkhorn :
+                    # compute regularized Wasserstein loss (sinkhorn) loss of discriminator :
+                    batch_size = d_fake.size(0)
+                    d_loss = (-2)*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
+                            - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
+                            - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
                     
-                    # gradient penalty loss
-                    grad_penalty = gradient_penalty(self.d_pyramid[0], real, fake, self.device) * self.hypers[
-                        'grad_penalty_weight']
+                    d_loss.backward(retain_graph=True)
+                
+                else : 
+                    # compute normal Wasserstein loss for discriminator
+                    d_fake_loss = torch.mean(d_fake)
+                    d_real_loss = (-1) * torch.mean(d_real)
+                    d_loss = d_fake_loss + d_real_loss 
+                    d_loss.backward()
+
+               
+                """ Instead of gradient penalty we can clamp the weights of the discriminator"""
+                
+                
+                
+                if self.grad_penalty:
+                # gradient penalty loss
+                    grad_penalty = gradient_penalty(self.d_pyramid[0], real, fake, self.device) * self.hypers['grad_penalty_weight']
                     grad_penalty.backward()
 
                 # make a step against the gradient
                 self.d_optimizer.step()
-
+                
+                if not self.grad_penalty :
+                    # clamp discriminator weights                
+                    ## this takes place after backwar pass
+                    for p in self.d_pyramid[0].parameters():
+                        p.data.clamp_(-0.01, 0.01)
+                
+                
+                
+              
             # ====== train generator ===========================================
+                
+            # no gradient must flow through discriminator
             
+            for p in self.d_pyramid[0].parameters():
+                p.requires_grad = False
+            
+    
             for i in range(self.g_steps):
                 
-                self.g_pyramid[0].zero_grad()
-
                 # let the discriminator judge the fake image patches
+                # this time we let gradient flow through generator (no detach)
+                
+                ## Use the previously generated image
+                if i!=0: fake = self.forward_g_pyramid(target_size=target_size)
+                    
                 d_fake = self.d_pyramid[0](fake)
+                d_real = self.d_pyramid[0](real)
 
-                # loss for fake images
-                adv_g_loss = (-1) * torch.mean(d_fake)
-                adv_g_loss.backward()
+                # compute sinkhorn loss of generator
+                
+                if self.sinkhorn:
+                
+                    batch_size = d_fake.size(0)
+                
+                    g_loss = 2*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
+                            - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
+                            - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
+                    
+                    ### invert sign of loss
+                    g_loss.backward(retain_graph=True) 
+                
+                else :
+                    
+                    g_loss = (-1) * torch.mean(d_fake)
+                    g_loss.backward()
 
                 # reconstruct original image with fixed z_init and else no noise
                 rec = self.forward_g_pyramid(target_size=target_size, Z=[self.z_init] + [0] * (len(self.g_pyramid) - 1))
@@ -202,15 +299,28 @@ class SinGAN:
                 # make a step against the gradient
                 self.g_optimizer.step()
 
-            loss_dict = {
-                'adv_d_fake_loss': adv_d_fake_loss,
-                'adv_d_real_loss': adv_d_real_loss,
-                'adv_g_loss': adv_g_loss,
+            
+            
+            if self.sinkhorn:
+                
+                embed_size =  d_fake.size(1)
+                loss_dict = {
+                    'batch_size':batch_size,
+                    'embed_size':embed_size,
+                    'sink_distance':float(sink_G),
+                    'rec_g_loss': float(rec_g_loss),
+                }
+            else : 
+                 loss_dict = {
+                'd_fake_loss': d_fake_loss,
+                'd_real_loss': d_real_loss,
+                'g_loss': g_loss,
                 'rec_g_loss': rec_g_loss,
-            }
-
+                }
             self.logger.log_losses(loss_dict)
-            print(f'[{self.N - len(self.g_pyramid) + 1}: {step}|{steps}] -', loss_dict)
+            
+            if step % 100 == 0:
+                print(f'[{self.N - len(self.g_pyramid) + 1}: {step}|{steps}] -', loss_dict)
 
             # increment counter for task progress tracking
             self.done_steps += 1
@@ -240,7 +350,7 @@ class SinGAN:
                 self.transform_output(real[0].detach().cpu().numpy().transpose(1, 2, 0)).astype('uint8'))
 
     def test(self, target_size: Tuple[int, int], Z: List[torch.Tensor] = None, injection: np.ndarray = None,
-             start_at_scale: int = None) -> torch.Tensor:
+            start_at_scale: int = None) -> torch.Tensor:
         # preprocess injection image and pack it in a batch
         if injection is not None:
             injection = torch.from_numpy(injection.transpose(2, 0, 1))
@@ -256,7 +366,7 @@ class SinGAN:
         return x
 
     def forward_g_pyramid(self, target_size: Tuple[int, int], start_at_scale: int = None, Z: List[torch.Tensor] = None,
-                          injection: np.ndarray = None) -> torch.Tensor:
+                        injection: np.ndarray = None) -> torch.Tensor:
 
         # default starting scale to the coarsest scale
         if start_at_scale is None:
@@ -363,7 +473,7 @@ class SinGAN:
     def update_celery_state(self):
         if current_task:
             current_task.update_state(state='PROGRESS',
-                                      meta={'current': self.done_steps,
+                                    meta={'current': self.done_steps,
                                             'total': self.total_steps,
                                             'percent': int((self.done_steps / self.total_steps) * 100)})
 
