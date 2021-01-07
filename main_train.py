@@ -17,6 +17,7 @@ parser.add_argument('--steps_per_scale', type=int, default=2000)
 parser.add_argument('--grad_penalty',type=bool,default=False)
 parser.add_argument('--sink_steps',type=int,default=20)
 parser.add_argument('--sink_eps',type=float,default=1)
+parser.add_argument('--sink',type=bool,default=False)
 
 args = parser.parse_args()
 
@@ -25,10 +26,13 @@ if torch.cuda.is_available():
     device = torch.device("cuda:0")
 else:
     device = torch.device("cpu")
+    
+print("Gradient penalty =",args.grad_penalty)
+print("Using sinkhorn loss = ",args.sink)
 
 # instantiate the logger and the SinGAN
 logger = TensorboardLogger(f'singan_{args.run_name}')
-singan = SinGAN(N=args.N, logger=logger, device=device,grad_penalty=args.grad_penalty)
+singan = SinGAN(N=args.N, logger=logger, device=device,grad_penalty=args.grad_penalty,sink=args.sink)
 
 
 # load the single training image
