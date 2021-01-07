@@ -7,7 +7,7 @@ import numpy as np
 
 from imageio import imwrite
 
-from models import SingleScaleGenerator, Discriminator
+from models import SingleScaleGenerator, Discriminator,Discriminator_sk
 from utils import freeze, gradient_penalty
 
 from celery import current_task
@@ -102,6 +102,22 @@ class SinGAN:
                                                  min_channels=self.hypers['min_n_channels'],
                                                  n_blocks=self.hypers['n_blocks']).to(self.device)
 
+            if self.sinkhorn :
+                
+                ### For sinkhorn we change the kernel size and stride 
+                ### This is to ensure we keep the same no of patches from one scale to another
+                
+                stride = (p+2)//2
+                ker_s = 2*stride + 1
+                print("For scale ",p,"kernel size is",ker_s,"stride is",stride)
+            
+                
+                ## when training with sinkhorn we have 32 output channels.
+                ## we need an embedding for each patch of the image.
+                new_discriminator = Discriminator_sk(n_channels=n_channels,
+                                                min_channels=self.hypers['min_n_channels'],
+                                                n_blocks=self.hypers['n_blocks'],tail_ker_s=ker_s,tail_stride=stride).to(self.device)
+            
             new_discriminator = Discriminator(n_channels=n_channels,
                                               min_channels=self.hypers['min_n_channels'],
                                               n_blocks=self.hypers['n_blocks']).to(self.device)
@@ -112,6 +128,7 @@ class SinGAN:
                 new_discriminator.load_state_dict(self.d_pyramid[0].state_dict())
 
             # reset the optimizers
+            ## Notice that each optimizer sees only the discriminator or generator parameters.
             self.g_optimizer = torch.optim.Adam(new_generator.parameters(), lr=self.hypers['g_lr'], betas=[0.5, 0.999])
             self.d_optimizer = torch.optim.Adam(new_discriminator.parameters(), lr=self.hypers['d_lr'],
                                                 betas=[0.5, 0.999])
@@ -156,19 +173,13 @@ class SinGAN:
 
                 # generate a fake image
                 fake = self.forward_g_pyramid(target_size=target_size)
+                
                 # let the discriminator judge the fake image patches (without any gradient flow through the generator )
                 d_fake = self.d_pyramid[0](fake.detach())
-
-                # loss for fake images
-                #adv_d_fake_loss = torch.mean(d_fake)
-                #adv_d_fake_loss.backward()
-
+                
                 # let the discriminator judge the real image patches
                 d_real = self.d_pyramid[0](real)
 
-                # loss for real images
-                #adv_d_real_loss = (-1) * torch.mean(d_real)
-                #adv_d_real_loss.backward()
                 
                 if self.sinkhorn :
                     
@@ -216,11 +227,28 @@ class SinGAN:
 
                 # let the discriminator judge the fake image patches
                 d_fake = self.d_pyramid[0](fake)
+                
+                
+                if not self.sinkhorn:
 
-                # loss for fake images
-                adv_g_loss = (-1) * torch.mean(d_fake)
-                adv_g_loss.backward()
+                    # invert sign of loss
+                    adv_g_loss = (-1) * torch.mean(d_fake)
+                    adv_g_loss.backward()
+                
+                else :
 
+                    d_real = self.d_pyramid[0](real)
+                    batch_size = d_fake.size(0)
+                
+                    adv_g_loss = 2*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
+                            - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
+                            - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
+                    
+                    ### backward loss
+                    adv_g_loss.backward(retain_graph=True) 
+                
+
+                
                 # reconstruct original image with fixed z_init and else no noise
                 rec = self.forward_g_pyramid(target_size=target_size, Z=[self.z_init] + [0] * (len(self.g_pyramid) - 1))
 

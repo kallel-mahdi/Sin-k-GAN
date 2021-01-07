@@ -69,7 +69,7 @@ class Discriminator(torch.nn.Module):
 class Discriminator_sk(torch.nn.Module):
 
     def __init__(self, n_channels: int = 32, min_channels: int = MIN_CHANNELS, n_blocks=5,tail_ker_s=5,tail_stride=1) -> None:
-        super(Discriminator, self).__init__()
+        super(Discriminator_sk, self).__init__()
 
         self.head = ConvBlock(in_channels=3, out_channels=n_channels,k_s=3,stride=1,padding=5)
 
