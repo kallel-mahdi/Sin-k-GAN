@@ -62,8 +62,8 @@ class SinGAN:
         self.sinkhorn = sink
         self.grad_penalty = grad_penalty
         print("Grad penalty=",self.grad_penalty,"Sinkhorn =",self.sinkhorn)
-        self.d_steps = 1
-        self.g_steps = 1
+        self.d_steps = 2
+        self.g_steps = 2
         
     def fit(self, img: np.ndarray, steps_per_scale: int = 2000) -> None:
         # initialize task tracking parameters
@@ -91,6 +91,7 @@ class SinGAN:
         # training progression
         self.logger.set_scale(self.N + 1)
         for p in range(self.N + 1):
+            
             self.logger.new_scale()
 
             # double number of initial channels every 4 scales
@@ -178,10 +179,19 @@ class SinGAN:
 
                 # make a step against the gradient
                 self.d_optimizer.step()
+                
+                 if not self.grad_penalty :
+                    # clamp discriminator weights                
+                    ## this takes place after backward pass
+                    ## replace the gradient penalty
+                    for p in self.d_pyramid[0].parameters():
+                        p.data.clamp_(-0.01, 0.01)
 
             # ====== train generator ===========================================
             
             for i in range(self.g_steps):
+                
+                if i!=0: fake = self.forward_g_pyramid(target_size=target_size)
                 
                 self.g_pyramid[0].zero_grad()
 
@@ -210,7 +220,8 @@ class SinGAN:
             }
 
             self.logger.log_losses(loss_dict)
-            print(f'[{self.N - len(self.g_pyramid) + 1}: {step}|{steps}] -', loss_dict)
+            if step % 100 == 0:
+                print(f'[{self.N - len(self.g_pyramid) + 1}: {step}|{steps}] -', loss_dict)
 
             # increment counter for task progress tracking
             self.done_steps += 1
