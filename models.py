@@ -5,11 +5,11 @@ MIN_CHANNELS = 32
 
 class ConvBlock(torch.nn.Module):
 
-    def __init__(self, in_channels: int, out_channels: int) -> None:
+    def __init__(self, in_channels: int, out_channels: int,k_s=3,stride=1,padding=1) -> None:
         super(ConvBlock, self).__init__()
 
         self.layers = torch.nn.Sequential(
-            torch.nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+            torch.nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=k_s, stride=stride, padding=padding),
             torch.nn.BatchNorm2d(num_features=out_channels),
             torch.nn.LeakyReLU(negative_slope=0.2, inplace=True)
         )
@@ -71,16 +71,16 @@ class Discriminator_sk(torch.nn.Module):
     def __init__(self, n_channels: int = 32, min_channels: int = MIN_CHANNELS, n_blocks=5,tail_ker_s=5,tail_stride=1) -> None:
         super(Discriminator_sk, self).__init__()
 
-        self.head = ConvBlock(in_channels=3, out_channels=n_channels,k_s=3,stride=1,padding=5)
+        self.head = ConvBlock(in_channels=3, out_channels=n_channels,k_s=3,stride=1,padding=1)
 
         self.body = torch.nn.ModuleList()
         for i in range(n_blocks-2):
             in_channels = max([min_channels, n_channels // (2 ** (i))])
             out_channels = max([min_channels, n_channels // (2 ** (i+1))])
-            self.body.append(ConvBlockD(in_channels=in_channels, out_channels=out_channels))
+            self.body.append(ConvBlock(in_channels=in_channels, out_channels=out_channels))
         self.body = torch.nn.Sequential(*self.body)
 
-        self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=32, kernel_size=9, stride=tail_stride, padding=1)
+        self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=32, kernel_size=tail_ker_s, stride=tail_stride, padding=tail_ker_s//2)
 
 
     def forward(self, x) -> None:

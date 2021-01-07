@@ -38,6 +38,7 @@ singan = SinGAN(N=args.N, logger=logger, device=device,grad_penalty=args.grad_pe
 # load the single training image
 train_img_path = os.path.join('data', args.img)
 train_img = imread(train_img_path)
+ref_img = imread("./data/car2_blue.jpg")
 # fit SinGAN to it
 singan.fit(img=train_img, steps_per_scale=args.steps_per_scale)
 # after training, save the model in a checkpoint

@@ -9,6 +9,7 @@ from imageio import imwrite
 
 from models import SingleScaleGenerator, Discriminator,Discriminator_sk
 from utils import freeze, gradient_penalty
+from sinkhorn import sinkhorn_loss_primal
 
 from celery import current_task
 
@@ -59,9 +60,12 @@ class SinGAN:
         self.done_steps = 0
         self.total_steps = None
         # training parameters :
+        ## Use sinkhorn or direct Wasserstein loss
         self.sinkhorn = sink
+        ## Use grad penalty or clip weights
         self.grad_penalty = grad_penalty
         print("Grad penalty=",self.grad_penalty,"Sinkhorn =",self.sinkhorn)
+        ## Number of passes per step
         self.d_steps = 1
         self.g_steps = 1
         
@@ -71,7 +75,7 @@ class SinGAN:
         self.update_celery_state()
 
         # precompute all the sizes of the different scales
-        target_size = img.shape[:-1]
+        target_size = img[0].shape[:-1] ## We need to make sure input images have same shape
         self.train_img = img
 
         # compute scales sizes
@@ -81,9 +85,14 @@ class SinGAN:
         print(scale_sizes)
 
         # preprocess input image and pack it in a batch
-        img = torch.from_numpy(img.transpose(2, 0, 1))
-        img = self.transform_input(img)
-        img = img.expand(1, 3, target_size[0], target_size[1])
+        for im in img:
+            
+            im = torch.from_numpy(im.transpose(2, 0, 1))
+            im = self.transform_input(im)
+            im = im.expand(1, 3, target_size[0], target_size[1])
+        
+        img = torch.cat(img)
+        print("Input shape = ",img.size())
 
         # fix initial noise map for reconstruction loss computation
         self.z_init = self.generate_random_noise(scale_sizes[:1])[0]
@@ -118,10 +127,14 @@ class SinGAN:
                                                 min_channels=self.hypers['min_n_channels'],
                                                 n_blocks=self.hypers['n_blocks'],tail_ker_s=ker_s,tail_stride=stride).to(self.device)
             
-            new_discriminator = Discriminator(n_channels=n_channels,
-                                              min_channels=self.hypers['min_n_channels'],
-                                              n_blocks=self.hypers['n_blocks']).to(self.device)
+            else:
+                
+                new_discriminator = Discriminator(n_channels=n_channels,
+                                                min_channels=self.hypers['min_n_channels'],
+                                                n_blocks=self.hypers['n_blocks']).to(self.device)
 
+            # Architecture is convolutional we can copy weights from one scale to another
+            # Reminder that we double num_channels after each  4 scales (so we can't copy)
             # initialize weights via copy if possible
             if (p - 1) // 4 == p // 4:
                 new_generator.load_state_dict(self.g_pyramid[0].state_dict())
@@ -152,6 +165,9 @@ class SinGAN:
         real = torch.nn.functional.interpolate(img, target_size, mode='bilinear', align_corners=True).float().to(
             self.device)
 
+        ## Parameters for sinkhorn:
+        epsilon = 0.1
+        niter_sink = 20
         # paragraph below equation (5) in paper
         if self.last_rec is not None:
             # compute root mean squared error between upsampled version of rec from last scale and the real target of the current scale
@@ -198,8 +214,7 @@ class SinGAN:
                     d_loss = adv_d_fake_loss + adv_d_real_loss 
                     d_loss.backward(retain_graph=True)
 
-                d_loss = adv_d_fake_loss + adv_d_real_loss
-                d_loss.backward()
+                
                 if self.grad_penalty:
                     
                     # gradient penalty loss
@@ -260,10 +275,11 @@ class SinGAN:
                 self.g_optimizer.step()
 
             if self.sinkhorn :
+                    embed_size = d_real.size(1)
                     loss_dict = {
                      'batch_size':batch_size,
                     'embed_size':embed_size,
-                    'sink_distance':float(sink_G),
+                    'sink_distance':float(adv_g_loss),
                     'rec_g_loss': float(rec_g_loss),
                 }
             
