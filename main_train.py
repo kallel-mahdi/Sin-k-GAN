@@ -1,7 +1,7 @@
 import torch
 import os
-from imageio import imread, imwrite
-from cv2 import resize
+from imageio import  imwrite
+from cv2 import resize,imread
 from singan import SinGAN
 from log import TensorboardLogger
 
@@ -39,12 +39,16 @@ singan = SinGAN(N=args.N, logger=logger, device=device,grad_penalty=args.grad_pe
 train_img_path = os.path.join('data', args.img)
 train_img = imread(train_img_path)
 ref_img = imread("./data/car2_blue.jpg")
+#ref_img = resize(ref_img,(train_img.shape[2],train_img.shape[1]))
 ref_img = resize(ref_img,(train_img.shape[1],train_img.shape[0]))
 
+
+print("Train_img shape",train_img.shape)
+print("Ref_img shape",ref_img.shape)
 #fit SinGan to one image 
 ## (ALWAYS PUT IMAGE IN A LIST)
 singan.fit(img=[train_img], steps_per_scale=args.steps_per_scale)
 # fit SinGAN to TWO IMAGES
-singan.fit(img=[train_img,ref_img], steps_per_scale=args.steps_per_scale)
+#singan.fit(img=[train_img,ref_img], steps_per_scale=args.steps_per_scale)
 # after training, save the model in a checkpoint
 singan.save_checkpoint()

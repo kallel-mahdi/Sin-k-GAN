@@ -88,6 +88,8 @@ class SinGAN:
             im = torch.from_numpy(im.transpose(2, 0, 1))
             im = self.transform_input(im)
             im = im.expand(1, 3, target_size[0], target_size[1])
+            #im = im.unsqueeze(0)
+            print("After operation img size is",im.size())
             torch_img.append(im)
         
         img = torch.cat(torch_img)
