@@ -1,5 +1,3 @@
-
- 
 from typing import Dict, Any, List, Tuple
 import torch
 import os
@@ -76,8 +74,7 @@ class SinGAN:
 
         # precompute all the sizes of the different scales
         target_size = img[0].shape[:-1] ## We need to make sure input images have same shape
-        self.train_img = img
-
+        
         # compute scales sizes
         scale_sizes = self.compute_scale_sizes(target_size)
 
@@ -85,13 +82,16 @@ class SinGAN:
         print(scale_sizes)
 
         # preprocess input image and pack it in a batch
+        torch_img = []
         for im in img:
             
             im = torch.from_numpy(im.transpose(2, 0, 1))
             im = self.transform_input(im)
             im = im.expand(1, 3, target_size[0], target_size[1])
+            torch_img.append(im)
         
-        img = torch.cat(img)
+        img = torch.cat(torch_img)
+        self.train_img = img
         print("Input shape = ",img.size())
 
         # fix initial noise map for reconstruction loss computation
@@ -386,7 +386,7 @@ class SinGAN:
                 x = torch.nn.functional.interpolate(x, size, mode='bilinear', align_corners=True)
             else:
                 # if no previous output is given, set it zero
-                x = torch.zeros(size=(1, 3,) + size)
+                x = torch.zeros(size=(self.train_img.size(0), 3,) + size)
 
             # feed noise map and image through current generator to obtain new image
             x = generator(z.to(self.device), x.to(self.device)).clamp(min=-1, max=1)
