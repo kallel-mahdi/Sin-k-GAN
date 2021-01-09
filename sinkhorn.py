@@ -1,5 +1,6 @@
 import torch
 from torch.autograd import Variable
+import torch.nn.functional as F
 import pdb
 
 def sinkhorn_loss_primal(x,y,epsilon,n,niter) :
@@ -11,7 +12,8 @@ def sinkhorn_loss_primal(x,y,epsilon,n,niter) :
 	niter is the max. number of steps in sinkhorn loop
 	"""
 	# The Sinkhorn algorithm takes as input three variables :
-	C = _squared_distances(x, y) # Wasserstein cost function
+	#C = _squared_distances(x, y) # Wasserstein cost function
+	C = _cosine_distances(x,y) 
 
 	mu = Variable(1./n*torch.cuda.FloatTensor(n).fill_(1),requires_grad=False) 
 	nu = Variable(1./n*torch.cuda.FloatTensor(n).fill_(1),requires_grad=False)
@@ -116,3 +118,12 @@ def _squared_distances(x, y) :
 	y_lin = y.unsqueeze(0) #y.dimshuffle('x', 0, 1)
 	c = torch.sum( torch.abs(x_col - y_lin) , 2)
 	return c 
+
+def _cosine_distances(x,y):
+    
+    ### x = [batch_x,embed] , y [batch_y,embed]
+    x = F.normalize(x,dim=1,p=2)
+    y = F.normalize(y,dim=1,p=2)
+    dot = x @ y.T ## [batch_x,batch_y]
+    
+    return 1-dot
