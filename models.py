@@ -45,10 +45,10 @@ class SingleScaleGenerator(torch.nn.Module):
 
 class Discriminator(torch.nn.Module):
 
-    def __init__(self, n_channels: int = 32, min_channels: int = MIN_CHANNELS, n_blocks=5) -> None:
+    def __init__(self, n_channels: int = 32, min_channels: int = MIN_CHANNELS, n_blocks=5,head_ks=3) -> None:
         super(Discriminator, self).__init__()
 
-        self.head = ConvBlock(in_channels=3, out_channels=n_channels)
+        self.head = ConvBlock(in_channels=3, out_channels=n_channels,kernel_size=head_ks)
 
         self.body = torch.nn.ModuleList()
         for i in range(n_blocks-2):
@@ -86,7 +86,7 @@ class Discriminator_sk(torch.nn.Module):
     def forward(self, x) -> None:
         #return self.tail(self.body(self.head(x)))
         x = self.tail(self.body(self.head(x)))
-        return x.reshape((x.shape[1],-1)).T
+        return x.reshape((x.shape[1],-1)).T ## Size (n_patches,n_channels)
 
 def weights_init(m):
     classname = m.__class__.__name__

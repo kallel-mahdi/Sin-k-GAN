@@ -42,7 +42,8 @@ class SinGAN:
             'min_n_channels': 32,  # minimum number of filters in any layer of any module
             'rec_loss_weight': 10.0,  # alpha weight for reconstruction loss
             'grad_penalty_weight': 0.1,  # lambda weight for gradient penalty loss
-            'noise_weight': 0.1  # base standard deviation of gaussian noise
+            'noise_weight': 0.1 , # base standard deviation of gaussian noise
+            'discriminator_ks':3
         }
         # overwrite them with given hyperparameters
         self.hypers.update(hypers)
@@ -134,7 +135,7 @@ class SinGAN:
                 
                 new_discriminator = Discriminator(n_channels=n_channels,
                                                 min_channels=self.hypers['min_n_channels'],
-                                                n_blocks=self.hypers['n_blocks']).to(self.device)
+                                                n_blocks=self.hypers['n_blocks'],head_ks =self.hypers['discriminator_ks']).to(self.device)
 
             # Architecture is convolutional we can copy weights from one scale to another
             # Reminder that we double num_channels after each  4 scales (so we can't copy)
