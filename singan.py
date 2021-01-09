@@ -66,7 +66,7 @@ class SinGAN:
         self.grad_penalty = grad_penalty
         print("Grad penalty=",self.grad_penalty,"Sinkhorn =",self.sinkhorn)
         ## Number of passes per step
-        self.d_steps = 1
+        self.d_steps = 3
         self.g_steps = 1
         
     def fit(self, img: np.ndarray, steps_per_scale: int = 2000) -> None:
@@ -277,7 +277,7 @@ class SinGAN:
 
                 # reconstruction loss
                 
-                rec_g_loss = torch.nn.functional.mse_loss(rec, real) * self.hypers['rec_loss_weight']*(1+ 99*self.sinkhorn)
+                rec_g_loss = torch.nn.functional.mse_loss(rec, real) * self.hypers['rec_loss_weight']
                 rec_g_loss.backward()
 
                 # make a step against the gradient

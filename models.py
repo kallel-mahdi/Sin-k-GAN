@@ -71,7 +71,7 @@ class Discriminator_sk(torch.nn.Module):
     def __init__(self, n_channels: int = 32, min_channels: int = MIN_CHANNELS, n_blocks=5,tail_ker_s=5,tail_stride=1) -> None:
         super(Discriminator_sk, self).__init__()
 
-        self.head = ConvBlock(in_channels=3, out_channels=n_channels,k_s=3,stride=1,padding=1)
+        self.head = ConvBlock(in_channels=3, out_channels=n_channels,k_s=tail_ker_s,stride=1,padding=1)
 
         self.body = torch.nn.ModuleList()
         for i in range(n_blocks-2):
@@ -80,7 +80,7 @@ class Discriminator_sk(torch.nn.Module):
             self.body.append(ConvBlock(in_channels=in_channels, out_channels=out_channels))
         self.body = torch.nn.Sequential(*self.body)
 
-        self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=16, kernel_size=tail_ker_s, stride=tail_stride, padding=tail_ker_s//2)
+        self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=32, kernel_size=tail_ker_s, stride=tail_stride, padding=tail_ker_s//2)
 
 
     def forward(self, x) -> None:
