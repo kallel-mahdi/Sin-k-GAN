@@ -6,6 +6,7 @@ import numpy as np
 from imageio import imwrite
 
 from models import SingleScaleGenerator, Discriminator,Discriminator_sk
+from models import weights_init
 from utils import freeze, gradient_penalty
 from sinkhorn import sinkhorn_loss_primal
 
@@ -118,7 +119,7 @@ class SinGAN:
                 ### For sinkhorn we change the kernel size and stride 
                 ### This is to ensure we keep the same no of patches from one scale to another
                 
-                stride = (p+2)//2
+                stride = 1 +  (p // 2)
                 ker_s = 2*stride + 1
                 print("For scale ",p,"kernel size is",ker_s,"stride is",stride)
             
@@ -138,9 +139,13 @@ class SinGAN:
             # Architecture is convolutional we can copy weights from one scale to another
             # Reminder that we double num_channels after each  4 scales (so we can't copy)
             # initialize weights via copy if possible
-            if (p - 1) // 4 == p // 4:
+            if (p - 1) // 2 == p // 2:
                 new_generator.load_state_dict(self.g_pyramid[0].state_dict())
                 new_discriminator.load_state_dict(self.d_pyramid[0].state_dict())
+            
+            else : 
+                new_generator.apply(weights_init)
+                new_discriminator.apply(weights_init)
 
             # reset the optimizers
             ## Notice that each optimizer sees only the discriminator or generator parameters.
@@ -270,7 +275,8 @@ class SinGAN:
                 rec = self.forward_g_pyramid(target_size=target_size, Z=[self.z_init] + [0] * (len(self.g_pyramid) - 1))
 
                 # reconstruction loss
-                rec_g_loss = torch.nn.functional.mse_loss(rec, real) * self.hypers['rec_loss_weight']
+                
+                rec_g_loss = torch.nn.functional.mse_loss(rec, real) * self.hypers['rec_loss_weight']*(1+ 99*self.sinkhorn)
                 rec_g_loss.backward()
 
                 # make a step against the gradient
@@ -282,7 +288,7 @@ class SinGAN:
                      'batch_size':batch_size,
                     'embed_size':embed_size,
                     'sink_distance':float(adv_g_loss),
-                    'rec_g_loss': float(rec_g_loss),
+                    'rec_g_loss': float(rec_g_loss)/100,
                 }
             
             else :
