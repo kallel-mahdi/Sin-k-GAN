@@ -277,7 +277,7 @@ class SinGAN:
 
                 # reconstruction loss
                 
-                rec_g_loss = torch.nn.functional.mse_loss(rec, real) * self.hypers['rec_loss_weight']
+                rec_g_loss = torch.nn.functional.mse_loss(rec, real) * self.hypers['rec_loss_weight']*(1+ 99*self.sinkhorn)
                 rec_g_loss.backward()
 
                 # make a step against the gradient
@@ -406,10 +406,20 @@ class SinGAN:
         if type == 'gaussian':
             return [torch.randn(size=(1, 3,) + size) for size in sizes]
 
-    def compute_scale_sizes(self, target_size, start_at_scale=None):
+    def compute_scale_sizes(self, target_size, start_at_scale=None,min_px=25):
         if start_at_scale is None:
             start_at_scale = self.N
-        return [tuple((np.array(target_size) // self.r ** n).astype(int)) for n in range(start_at_scale, -1, -1)]
+        scale_sizes = [tuple((np.array(target_size) // self.r ** n).astype(int)) for n in range(start_at_scale, -1, -1)]
+        
+        gamma = min_px/scale_sizes[0][0] ## longuer generalement inferieure a largeur
+        scales_sizes[0][0]*=gamma
+        scales_sizes[0][1]*=gamma
+        
+        return scale_sizes
+        
+            
+        
+        
 
     def save_checkpoint(self) -> None:
         # create the checkpoint directory if it does not exist
