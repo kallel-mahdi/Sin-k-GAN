@@ -47,6 +47,7 @@ class SinGAN:
         }
         # overwrite them with given hyperparameters
         self.hypers.update(hypers)
+        print("Hyper parameters :",self.hypers)
 
         # define input and output (de-)normalization transformations
         self.transform_input = lambda x: (x - 127.5) / 127.5
