@@ -37,18 +37,21 @@ class SingleScaleGenerator(torch.nn.Module):
             torch.nn.Tanh()
         )
 
-    def forward(self, z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-        r = x + z
-        r = self.tail(self.body(self.head(r)))
-        return x + r
+    def forward(self,x,y):
+        x = self.head(x)
+        x = self.body(x)
+        x = self.tail(x)
+        ind = int((y.shape[2]-x.shape[2])/2)
+        y = y[:,:,ind:(y.shape[2]-ind),ind:(y.shape[3]-ind)]
+        return x+y
 
 
 class Discriminator(torch.nn.Module):
 
     def __init__(self, n_channels: int = 32, min_channels: int = MIN_CHANNELS, n_blocks=5,head_ks=3) -> None:
         super(Discriminator, self).__init__()
-
-        self.head = ConvBlock(in_channels=3, out_channels=n_channels,kernel_size=head_ks)
+rec_loss
+        self.head = ConvBlock(in_channels=3, out_channels=n_channels,k_s=head_ks)
 
         self.body = torch.nn.ModuleList()
         for i in range(n_blocks-2):
