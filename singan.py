@@ -210,9 +210,9 @@ class SinGAN:
                     
                     # compute regularized Wasserstein loss (sinkhorn) loss of discriminator :
                     batch_size = d_fake.size(0)
-                    d_loss = (-2)*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
-                            - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
-                            - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
+                    d_loss = (-2)*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink,img_dimensions=target_size) \
+                            - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink,img_dimensions=target_size) \
+                            - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink,img_dimensions=target_size)
                     
                     d_loss.backward(retain_graph=True)
                 
@@ -264,9 +264,9 @@ class SinGAN:
                     d_real = self.d_pyramid[0](real)
                     batch_size = d_fake.size(0)
                 
-                    adv_g_loss = 2*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink) \
-                            - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink) \
-                            - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink)
+                    adv_g_loss = 2*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink,img_dimensions=target_size) \
+                            - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink,img_dimensions=target_size) \
+                            - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink,img_dimensions=target_size)
                     
                     ### backward loss
                     adv_g_loss.backward(retain_graph=True) 

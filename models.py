@@ -37,17 +37,17 @@ class SingleScaleGenerator(torch.nn.Module):
             torch.nn.Tanh()
         )
 
-    # def forward(self, z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-    #     r = x + z
-    #     r = self.tail(self.body(self.head(r)))
-    #     return x + r
-    def forward(self,x,y):
-        x = self.head(x)
-        x = self.body(x)
-        x = self.tail(x)
-        ind = int((y.shape[2]-x.shape[2])/2)
-        y = y[:,:,ind:(y.shape[2]-ind),ind:(y.shape[3]-ind)]
-        return x+y
+    def forward(self, z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        r = x + z
+        r = self.tail(self.body(self.head(r)))
+        return x + r
+    # def forward(self,x,y):
+    #     x = self.head(x)
+    #     x = self.body(x)
+    #     x = self.tail(x)
+    #     ind = int((y.shape[2]-x.shape[2])/2)
+    #     y = y[:,:,ind:(y.shape[2]-ind),ind:(y.shape[3]-ind)]
+    #     return x+y
 
 
 class Discriminator(torch.nn.Module):
@@ -87,7 +87,7 @@ class Discriminator_sk(torch.nn.Module):
             self.body.append(ConvBlock(in_channels=in_channels, out_channels=out_channels))
         self.body = torch.nn.Sequential(*self.body)
 
-        self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=16, kernel_size=tail_ker_s, stride=tail_stride, padding=tail_ker_s//2)
+        self.tail = torch.nn.Conv2d(in_channels=out_channels, out_channels=32, kernel_size=tail_ker_s, stride=tail_stride, padding=tail_ker_s//2)
 
 
     def forward(self, x) -> None:
