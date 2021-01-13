@@ -8,7 +8,7 @@ from imageio import imwrite
 from models import SingleScaleGenerator, Discriminator,Discriminator_sk
 from models import weights_init
 from utils import freeze, gradient_penalty
-from sinkhorn import sinkhorn_loss_primal
+from sinkhorn import sinkhorn_loss_primal,_pixel_distance_cost
 
 from celery import current_task
 
@@ -180,7 +180,8 @@ class SinGAN:
         ### Get the output shape for this scale
         ### This will be uzed for the transport penalty
         out_shape = self.d_pyramid[0].output_size(real)[:-2]
-        print("DISCRIMINATOR OUTPUT SHAPE",out_shape)
+        pix_dist = _pixel_distance_cost(out_shape)
+        print("PIX DIST SHAPE",pix_dist.size())
         # paragraph below equation (5) in paper
         if self.last_rec is not None:
             # compute root mean squared error between upsampled version of rec from last scale and the real target of the current scale
