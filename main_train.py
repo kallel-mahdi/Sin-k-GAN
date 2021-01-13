@@ -17,6 +17,7 @@ parser.add_argument('--img')
 parser.add_argument('--N', type=int, default=8)
 parser.add_argument('--steps_per_scale', type=int, default=2000)
 parser.add_argument('--grad_penalty',type=bool,default=False)
+parser.add_argument('--pix_dist',type=bool,default=False)
 parser.add_argument('--sink_steps',type=int,default=20)
 parser.add_argument('--sink_eps',type=float,default=1)
 parser.add_argument('--sink',type=bool,default=False)
@@ -47,6 +48,7 @@ hypers = {
             'rec_loss_weight': args.rec_loss_weight,  
             'grad_penalty_weight': args.grad_penalty_weight,
             'noise_weight': args.noise_weight,
+            'pix_dist' : args.pix_dist,
          }
 # instantiate the logger and the SinGAN
 logger = TensorboardLogger(f'singan_{args.run_name}')
