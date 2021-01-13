@@ -13,7 +13,7 @@ def sinkhorn_loss_primal(x,y,epsilon,n,niter,img_dimensions) :
 	"""
 	# The Sinkhorn algorithm takes as input three variables :
 	#C = _squared_distances(x, y) # Wasserstein cost function
-	C = _cosine_distances(x,y) 
+	C = _cosine_distances(x,y) #+ _distance_cost(img_dimensions)
 
 	mu = Variable(1./n*torch.cuda.FloatTensor(n).fill_(1),requires_grad=False) 
 	nu = Variable(1./n*torch.cuda.FloatTensor(n).fill_(1),requires_grad=False)
@@ -127,3 +127,18 @@ def _cosine_distances(x,y):
     dot = x @ y.T ## [batch_x,batch_y]
     
     return 1-dot
+
+def _distance_cost(img_dimensions):
+
+  if not img_dimensions :
+    print("returning zerooo")
+    return 0
+  x,y = img_dimensions
+  line = torch.FloatTensor(range(x)).reshape(-1,1)
+  column = torch.FloatTensor(range(y)).reshape(1,-1)
+
+  a = line.repeat(1,y)
+  b =column.repeat(x,1)
+  cost = a+b
+  print("Transport cost shape",cost.size())
+  return cost.divide(x+y).to("cuda:0")
