@@ -141,4 +141,4 @@ def _distance_cost(img_dimensions):
   b =column.repeat(x,1)
   cost = a+b
   print("Transport cost shape",cost.size())
-  return cost.divide(x+y).to("cuda:0")
+  return cost.divide(x+y).reshape(-1,1)

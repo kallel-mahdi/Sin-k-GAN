@@ -93,7 +93,15 @@ class Discriminator_sk(torch.nn.Module):
     def forward(self, x) -> None:
         #return self.tail(self.body(self.head(x)))
         x = self.tail(self.body(self.head(x)))
+        out_shape = x.size()
         return x.reshape((x.shape[1],-1)).T ## Size (n_patches,n_channels)
+    
+    def output_size(self,x):
+        x = self.tail(self.body(self.head(x)))
+        out_shape = x.size()
+        return out_shape
+        
+        
 
 def weights_init(m):
     classname = m.__class__.__name__

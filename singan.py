@@ -177,6 +177,10 @@ class SinGAN:
         ## Parameters for sinkhorn:
         epsilon = 0.1
         niter_sink = 20
+        ### Get the output shape for this scale
+        ### This will be uzed for the transport penalty
+        out_shape = self.d_pyramid[0].output_size(real)[:-2]
+        print("DISCRIMINATOR OUTPUT SHAPE",out_shape)
         # paragraph below equation (5) in paper
         if self.last_rec is not None:
             # compute root mean squared error between upsampled version of rec from last scale and the real target of the current scale
@@ -210,9 +214,9 @@ class SinGAN:
                     
                     # compute regularized Wasserstein loss (sinkhorn) loss of discriminator :
                     batch_size = d_fake.size(0)
-                    d_loss = (-2)*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink,img_dimensions=target_size) \
-                            - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink,img_dimensions=target_size) \
-                            - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink,img_dimensions=target_size)
+                    d_loss = (-2)*sinkhorn_loss_primal(d_real, d_fake, epsilon,batch_size,niter_sink,img_dimensions=out_shape) \
+                            - sinkhorn_loss_primal(d_fake, d_fake, epsilon, batch_size,niter_sink,img_dimensions=out_shape) \
+                            - sinkhorn_loss_primal(d_real, d_real, epsilon, batch_size,niter_sink,img_dimensions=out_shape)
                     
                     d_loss.backward(retain_graph=True)
                 
